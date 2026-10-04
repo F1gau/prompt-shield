@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Лицензия — Промпт-Щит{% endblock %}
+{% block page_title %}Лицензия{% endblock %}
+
+{% block content %}
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="row g-4">
+
+  <div class="col-lg-6">
+    <div class="ps-card">
+      <h5 class="mb-3">Текущий статус</h5>
+
+      {% if status.mode == 'licensed' %}
+        <div class="mb-2"><span class="badge {{ 'bg-danger' if status.expired else 'bg-success' }}">
+          {{ 'Лицензия истекла' if status.expired else 'Лицензия активна' }}
+        </span></div>
+        <table class="table table-sm">
+          <tr><td style="color:var(--muted)">Организация</td><td>{{ status.organization }}</td></tr>
+          <tr><td style="color:var(--muted)">Рабочих мест</td><td>{{ status.seats }}</td></tr>
+          <tr><td style="color:var(--muted)">Действует до</td><td>{{ status.expires or "Бессрочно" }}</td></tr>
+        </table>
+      {% else %}
+        <div class="mb-2">
+          <span class="badge {{ 'bg-danger' if status.blocked else 'bg-warning text-dark' }}">
+            {{ 'Пробный период закончился' if status.blocked else 'Пробный период' }}
+          </span>
+        </div>
+        <table class="table table-sm">
+          <tr><td style="color:var(--muted)">Осталось дней</td><td>{{ status.days_left }}</td></tr>
+          <tr><td style="color:var(--muted)">Использовано проверок</td><td>{{ status.checks_used }} / {{ status.checks_max }}</td></tr>
+        </table>
+        <p style="color:var(--muted);font-size:13px;">
+          Для снятия ограничений активируйте лицензионный ключ, полученный у поставщика.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h5 class="mb-3">Активация лицензии</h5>
+      <textarea name="license_key" class="form-control mb-3" style="min-height:100px;" placeholder="Вставьте лицензионный ключ, полученный у поставщика"></textarea>
+      <button class="btn btn-primary">Активировать</button>
+    </form>
+  </div>
+
+</div>
+
+{% endblock %}

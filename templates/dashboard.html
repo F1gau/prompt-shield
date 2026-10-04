@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — Промпт-Щит{% endblock %}
+{% block page_title %}Дашборд{% endblock %}
+
+{% block content %}
+
+<div class="ps-card mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <div style="color:var(--muted);font-size:13px;">Организация</div>
+    <div style="font-size:18px;font-weight:700;">{{ cfg.organization_name or "Не указана" }}</div>
+  </div>
+  <a href="{{ url_for('routes.check_page') }}" class="btn btn-primary">
+    <i class="bi bi-search"></i> Новая проверка
+  </a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="ps-stat">
+      <div class="label">Всего проверок</div>
+      <div class="value">{{ stats.total_checks }}</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="ps-stat">
+      <div class="label">За 30 дней</div>
+      <div class="value">{{ stats.checks_period }}</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="ps-stat">
+      <div class="label">Доля высокого риска</div>
+      <div class="value">{{ stats.high_risk_ratio }}%</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="ps-stat">
+      <div class="label">Критических инцидентов</div>
+      <div class="value" style="color:#ef4444;">{{ stats.risk_counts.get("Критический", 0) }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="ps-card">
+      <h6 class="mb-3">Динамика проверок (30 дней)</h6>
+      <canvas id="timelineChart" height="120"></canvas>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="ps-card">
+      <h6 class="mb-3">Распределение по уровню риска</h6>
+      <canvas id="riskChart" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="ps-card">
+  <h6 class="mb-3">Наиболее часто встречающиеся типы данных</h6>
+  <canvas id="typesChart" height="90"></canvas>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+
+const timelineLabels = {{ stats.timeline | map(attribute=0) | list | tojson }};
+const timelineValues = {{ stats.timeline | map(attribute=1) | list | tojson }};
+
+new Chart(document.getElementById("timelineChart"), {
+    type: "line",
+    data: {
+        labels: timelineLabels,
+        datasets: [{
+            label: "Проверок",
+            data: timelineValues,
+            borderColor: "#3b82f6",
+            backgroundColor: "rgba(59,130,246,.15)",
+            fill: true,
+            tension: .3
+        }]
+    },
+    options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+});
+
+const riskLabels = {{ stats.risk_counts.keys() | list | tojson }};
+const riskValues = {{ stats.risk_counts.values() | list | tojson }};
+
+new Chart(document.getElementById("riskChart"), {
+    type: "doughnut",
+    data: {
+        labels: riskLabels,
+        datasets: [{
+            data: riskValues,
+            backgroundColor: ["#22c55e", "#eab308", "#f97316", "#ef4444"]
+        }]
+    }
+});
+
+const typeLabels = {{ stats.top_types | map(attribute=0) | list | tojson }};
+const typeValues = {{ stats.top_types | map(attribute=1) | list | tojson }};
+
+new Chart(document.getElementById("typesChart"), {
+    type: "bar",
+    data: {
+        labels: typeLabels,
+        datasets: [{
+            label: "Найдено",
+            data: typeValues,
+            backgroundColor: "#3b82f6"
+        }]
+    },
+    options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+});
+
+</script>
+{% endblock %}

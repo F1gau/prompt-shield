@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Отчёты и активность — Промпт-Щит{% endblock %}
+{% block page_title %}Отчёты и активность{% endblock %}
+
+{% block content %}
+
+<div class="ps-card mb-4">
+  <h5 class="mb-3">Сводный отчёт за период</h5>
+  <p style="color:var(--muted);font-size:13px;">
+    Дневной и недельный отчёты — для оперативного контроля. Месячный
+    («для руководителя ИБ») — агрегированная сводка по рискам и активности.
+  </p>
+
+  <div class="row g-3">
+    {% for period, title in [("day","За сутки"), ("week","За неделю"), ("month","За месяц (для руководителя ИБ)")] %}
+    <div class="col-md-4">
+      <div class="ps-card mb-0">
+        <h6>{{ title }}</h6>
+        <div class="d-flex gap-2 mt-2 flex-wrap">
+          {% for fmt, label, icon in [("pdf","PDF","file-earmark-pdf"), ("xlsx","XLSX","file-earmark-excel"), ("json","JSON","filetype-json")] %}
+          <form method="post" action="{{ url_for('routes.reports_generate') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="period" value="{{ period }}">
+            <input type="hidden" name="format" value="{{ fmt }}">
+            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-{{ icon }}"></i> {{ label }}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="ps-card mb-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h5 class="mb-0">Активность пользователей (30 дней)</h5>
+    <form method="post" action="{{ url_for('routes.reports_export_incidents') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-excel"></i> Экспорт журнала в XLSX</button>
+    </form>
+  </div>
+
+  <p style="color:var(--muted);font-size:13px;">
+    Оценка риска — ориентировочный показатель на основе истории проверок
+    (не точная поведенческая метрика): средний уровень риска проверок
+    пользователя с поправкой на долю проверок с высоким/критическим риском.
+  </p>
+
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Пользователь</th>
+          <th>Проверок</th>
+          <th>Нарушений</th>
+          <th>Оценка риска</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not activity %}
+        <tr><td colspan="4" style="color:var(--muted)">Данных за период нет</td></tr>
+        {% endif %}
+        {% for entry in activity %}
+        <tr>
+          <td>{{ entry.username }}</td>
+          <td>{{ entry.total_checks }}</td>
+          <td>{{ entry.violations }}</td>
+          <td>
+            <span class="badge {{ 'bg-danger' if entry.risk_score >= 70 else ('bg-warning text-dark' if entry.risk_score >= 35 else 'bg-success') }}">
+              {{ entry.risk_score }} / 100
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="ps-card">
+  <h5 class="mb-3">Сводка за 30 дней</h5>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <div class="ps-stat"><div class="label">Проверок за период</div><div class="value">{{ stats.checks_period }}</div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="ps-stat"><div class="label">Всего проверок</div><div class="value">{{ stats.total_checks }}</div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="ps-stat"><div class="label">Доля высокого/критического риска</div><div class="value">{{ stats.high_risk_ratio }}%</div></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

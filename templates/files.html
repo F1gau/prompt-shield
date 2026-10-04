@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Проверка файлов — Промпт-Щит{% endblock %}
+{% block page_title %}Проверка файлов{% endblock %}
+
+{% block content %}
+
+<div class="ps-card">
+  <h5 class="mb-3">Загрузите файл для проверки</h5>
+  <p style="color:var(--muted)">
+    Поддерживаются форматы: TXT, PDF (включая сканы с OCR), DOCX, XLSX, PPTX, CSV, LOG, JSON,
+    а также фото и скриншоты — JPG, PNG, WEBP (распознавание текста через OCR).
+    Файл обрабатывается локально, временная копия удаляется сразу после анализа и не сохраняется на диске.
+  </p>
+
+  <div class="dropzone" id="dropzone">
+    <i class="bi bi-cloud-arrow-up" style="font-size:36px;"></i>
+    <div class="mt-2">Перетащите файл сюда или нажмите, чтобы выбрать</div>
+    <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.csv,.xlsx,.pptx,.log,.json,.jpg,.jpeg,.png,.webp" style="display:none">
+  </div>
+</div>
+
+<div id="resultsArea"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+function escapeAttr(s){
+    return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+async function markFalsePositive(type, value, btnEl){
+
+    try {
+        const response = await fetch("/api/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type, value })
+        });
+
+        if(response.ok){
+            const row = btnEl.closest("div.small");
+            if(row){
+                row.style.opacity = "0.4";
+                row.innerHTML = '<span style="color:var(--muted)">Отмечено — не будет показываться впредь</span>';
+            }
+        }
+    } catch(e){
+        // тихо игнорируем
+    }
+}
+
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const resultsArea = document.getElementById("resultsArea");
+
+dropzone.addEventListener("click", () => fileInput.click());
+
+dropzone.addEventListener("dragover", e => {
+    e.preventDefault();
+    dropzone.classList.add("dragover");
+});
+
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+
+dropzone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+    if(e.dataTransfer.files.length){
+        uploadFile(e.dataTransfer.files[0]);
+    }
+});
+
+fileInput.addEventListener("change", () => {
+    if(fileInput.files.length){
+        uploadFile(fileInput.files[0]);
+    }
+});
+
+const riskClassMap = { "Низкий":"risk-low", "Средний":"risk-medium", "Высокий":"risk-high", "Критический":"risk-critical" };
+
+async function uploadFile(file){
+
+    const card = document.createElement("div");
+    card.className = "ps-card mt-4";
+    card.innerHTML = `<div><i class="bi bi-hourglass-split"></i> Проверка файла «${file.name}»...</div>`;
+    resultsArea.prepend(card);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const response = await fetch("/api/upload", { method: "POST", body: formData });
+
+        if(response.status === 402){
+            const err = await response.json();
+            card.innerHTML = `<div class="text-danger">${err.detail || "Достигнут лимит пробного периода."}</div>`;
+            return;
+        }
+
+        const data = await response.json();
+
+        if(data.error){
+            card.innerHTML = `<div class="text-danger"><b>${file.name}</b>: ${data.error}</div>`;
+            return;
+        }
+
+        let findingsHtml = "";
+        let total = 0;
+
+        (data.findings || []).forEach(item => {
+            total += item.count;
+
+            let details = item.items.map(v => `
+                <div class="small mt-1 ms-2 d-flex justify-content-between align-items-center">
+                    <span>• ${v.value} <span style="color:var(--muted)">(${v.confidence})</span></span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:11px;"
+                            title="Отметить как ложное срабатывание — больше не показывать это значение"
+                            onclick="markFalsePositive('${escapeAttr(item.type)}', '${escapeAttr(v.value)}', this)">
+                        не утечка
+                    </button>
+                </div>
+            `).join("");
+
+            findingsHtml += `
+                <div class="result-card">
+                    <div class="d-flex justify-content-between">
+                        <strong>${item.type}</strong>
+                        <span class="badge bg-primary">${item.count}</span>
+                    </div>
+                    ${details}
+                </div>
+            `;
+        });
+
+        let warningHtml = "";
+        if(data.extraction_warning){
+            warningHtml = `<div class="alert alert-warning py-2 mt-2 mb-0" style="font-size:13px;">
+                <i class="bi bi-exclamation-triangle"></i> ${data.extraction_warning}
+            </div>`;
+        }
+
+        let methodBadge = "";
+        if(data.extraction_method === "ocr"){
+            methodBadge = `<span class="badge bg-secondary ms-2"><i class="bi bi-camera"></i> распознано OCR</span>`;
+        }
+
+        card.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6 class="mb-0"><i class="bi bi-file-earmark"></i> ${data.filename} ${methodBadge}</h6>
+                <span class="badge-risk ${riskClassMap[data.risk] || 'risk-low'}">${data.risk}</span>
+            </div>
+            <div class="mt-2" style="color:var(--muted)">Найдено совпадений: ${total}</div>
+            ${warningHtml}
+            <div class="mt-3">${findingsHtml || '<div class="text-success">Совпадений не найдено</div>'}</div>
+        `;
+
+    } catch (err) {
+        card.innerHTML = `<div class="text-danger">Ошибка загрузки файла «${file.name}»</div>`;
+    }
+}
+
+</script>
+{% endblock %}

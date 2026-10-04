@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}Проверка текста — Промпт-Щит{% endblock %}
+{% block page_title %}Проверка текста{% endblock %}
+
+{% block content %}
+
+<div class="row g-4">
+
+  <div class="col-lg-8">
+    <div class="ps-card">
+      <h5 class="mb-3">Текст для проверки</h5>
+      <textarea id="text" class="form-control" placeholder="Вставьте текст перед отправкой в ChatGPT / Claude / Gemini..."></textarea>
+
+      <div class="mt-3">
+        <label class="form-label" style="font-size:13px;color:var(--muted)">
+          Куда планируете отправить текст? (необязательно — используется только для журнала и политики разрешённых сервисов)
+        </label>
+        <select id="destination" class="form-select" style="max-width:320px;">
+          <option value="">Не указано</option>
+          {% for key, provider in cfg.ai_providers.items() %}
+          <option value="{{ key }}">{{ provider.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="mt-3 d-flex flex-wrap gap-2">
+        <button class="btn btn-primary" onclick="analyze()">
+          <i class="bi bi-search"></i> Проверить
+        </button>
+        <button class="btn btn-outline-secondary" onclick="maskAction()">
+          <i class="bi bi-eye-slash"></i> Маскировать
+        </button>
+        <button class="btn btn-outline-secondary" onclick="downloadReport()">
+          <i class="bi bi-file-earmark-pdf"></i> Скачать отчёт
+        </button>
+        <button class="btn btn-outline-danger" onclick="clearText()">
+          <i class="bi bi-trash"></i> Очистить
+        </button>
+      </div>
+    </div>
+
+    <div class="ps-card mt-4">
+      <div class="d-flex justify-content-between align-items-center" style="cursor:pointer;" onclick="toggleResponseBox()">
+        <h5 class="mb-0"><i class="bi bi-arrow-return-left"></i> Проверить ответ ИИ</h5>
+        <i class="bi bi-chevron-down" id="responseToggleIcon"></i>
+      </div>
+      <p style="color:var(--muted);font-size:13px;" class="mb-0 mt-1">
+        «Промпт-Щит» не перехватывает трафик к AI-сервисам напрямую — если хотите убедиться,
+        что сам ответ модели не содержит утечки (например, случайно процитированные секреты),
+        вставьте его сюда и проверьте так же, как исходный запрос.
+      </p>
+
+      <div id="responseBox" style="display:none;" class="mt-3">
+        <textarea id="responseText" class="form-control" style="min-height:160px;" placeholder="Вставьте сюда ответ, полученный от AI-сервиса..."></textarea>
+        <button class="btn btn-primary mt-2" onclick="analyzeResponse()">
+          <i class="bi bi-search"></i> Проверить ответ
+        </button>
+        <div id="responseResult" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="ps-card">
+      <h5>Статус проверки</h5>
+      <div class="mt-3">
+        <div style="color:var(--muted)">Уровень риска:</div>
+        <div id="risk" class="risk-badge mt-2">Не проверено</div>
+      </div>
+      <div class="mt-3">
+        <div style="color:var(--muted)">Рекомендуемое действие:</div>
+        <div id="action" class="mt-2"><span class="badge bg-secondary">Не проверено</span></div>
+      </div>
+      <div id="providerWarning" class="alert alert-danger mt-3 mb-0 py-2" style="display:none;font-size:13px;">
+        <i class="bi bi-exclamation-triangle"></i> Выбранный AI-сервис запрещён политикой организации.
+      </div>
+      <hr style="border-color:var(--border)">
+      <div style="color:var(--muted)">Найдено совпадений:</div>
+      <div id="totalMatches" class="fs-3 mt-2">0</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="ps-card mt-4">
+  <h5 class="mb-3">Найденные данные</h5>
+  <div id="findings"><div style="color:var(--muted)">Выполните проверку текста</div></div>
+</div>
+
+<div class="ps-card mt-4">
+  <h5 class="mb-3">Безопасная версия текста</h5>
+  <pre id="masked"></pre>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+const ACTION_BADGE = {
+    "ALLOW": '<span class="badge" style="background:#22c55e;">ALLOW — можно отправлять</span>',
+    "MASK": '<span class="badge" style="background:#eab308;color:#1f2937;">MASK — сначала маскировать</span>',
+    "BLOCK": '<span class="badge" style="background:#ef4444;">BLOCK — не отправлять</span>'
+};
+
+function toggleResponseBox(){
+    const box = document.getElementById("responseBox");
+    const icon = document.getElementById("responseToggleIcon");
+    const isOpen = box.style.display !== "none";
+    box.style.display = isOpen ? "none" : "block";
+    icon.className = isOpen ? "bi bi-chevron-down" : "bi bi-chevron-up";
+}
+
+function escapeAttr(s){
+    return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function renderFindings(findings){
+
+    let html = "";
+    let total = 0;
+
+    (findings || []).forEach(item => {
+        total += item.count;
+
+        let details = item.items.map(v => `
+            <div class="small mt-1 ms-2 d-flex justify-content-between align-items-center">
+                <span>• ${v.value} <span style="color:var(--muted)">(${v.confidence})</span></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:11px;"
+                        title="Отметить как ложное срабатывание — больше не показывать это значение"
+                        onclick="markFalsePositive('${escapeAttr(item.type)}', '${escapeAttr(v.value)}', this)">
+                    не утечка
+                </button>
+            </div>
+        `).join("");
+
+        html += `
+            <div class="result-card">
+                <div class="d-flex justify-content-between">
+                    <strong>${item.type}</strong>
+                    <span class="badge bg-primary">${item.count}</span>
+                </div>
+                ${details}
+            </div>
+        `;
+    });
+
+    return { html: html || '<div class="text-success">Совпадений не найдено</div>', total };
+}
+
+async function markFalsePositive(type, value, btnEl){
+
+    try {
+        const response = await fetch("/api/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type, value })
+        });
+
+        if(response.ok){
+            const row = btnEl.closest("div.small");
+            if(row){
+                row.style.opacity = "0.4";
+                row.innerHTML = '<span style="color:var(--muted)">Отмечено — не будет показываться впредь</span>';
+            }
+        }
+    } catch(e){
+        // тихо игнорируем — это второстепенное действие, не должно мешать основной проверке
+    }
+}
+
+async function analyze(){
+    const text = document.getElementById("text").value;
+    const destination = document.getElementById("destination").value;
+
+    const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, destination, kind: "text" })
+    });
+
+    if(response.status === 402){
+        const err = await response.json();
+        alert(err.detail || "Достигнут лимит пробного периода.");
+        return;
+    }
+
+    const data = await response.json();
+
+    const { html, total } = renderFindings(data.findings);
+    document.getElementById("findings").innerHTML = html;
+    document.getElementById("totalMatches").innerText = total;
+
+    const riskEl = document.getElementById("risk");
+    riskEl.className = "risk-badge";
+
+    const map = { "Низкий":"risk-low", "Средний":"risk-medium", "Высокий":"risk-high", "Критический":"risk-critical" };
+    riskEl.classList.add(map[data.risk] || "risk-low");
+    riskEl.innerText = data.risk;
+
+    document.getElementById("action").innerHTML = ACTION_BADGE[data.action] || "";
+
+    document.getElementById("providerWarning").style.display = data.provider_blocked ? "block" : "none";
+
+    if(data.truncated){
+        alert("Текст был обрезан до максимальной допустимой длины (см. Настройки).");
+    }
+}
+
+async function analyzeResponse(){
+    const text = document.getElementById("responseText").value;
+
+    const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, kind: "ai_response" })
+    });
+
+    if(response.status === 402){
+        const err = await response.json();
+        alert(err.detail || "Достигнут лимит пробного периода.");
+        return;
+    }
+
+    const data = await response.json();
+    const { html, total } = renderFindings(data.findings);
+
+    const map = { "Низкий":"risk-low", "Средний":"risk-medium", "Высокий":"risk-high", "Критический":"risk-critical" };
+
+    document.getElementById("responseResult").innerHTML = `
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge-risk ${map[data.risk] || 'risk-low'}">${data.risk}</span>
+            <span style="color:var(--muted);font-size:13px;">Найдено совпадений: ${total}</span>
+        </div>
+        ${html}
+    `;
+}
+
+async function maskAction(){
+    const text = document.getElementById("text").value;
+
+    const response = await fetch("/api/mask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+    });
+
+    const data = await response.json();
+    document.getElementById("masked").innerText = data.masked;
+}
+
+async function downloadReport(){
+    const text = document.getElementById("text").value;
+    const destination = document.getElementById("destination").value;
+
+    if(!text.trim()){
+        alert("Введите текст для анализа");
+        return;
+    }
+
+    const response = await fetch("/api/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, destination })
+    });
+
+    if(response.status === 402){
+        const err = await response.json();
+        alert(err.detail || "Достигнут лимит пробного периода.");
+        return;
+    }
+
+    if(!response.ok){
+        alert("Не удалось сформировать отчёт");
+        return;
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "PromptShield_Report.pdf";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+}
+
+function clearText(){
+    document.getElementById("text").value = "";
+    document.getElementById("masked").innerText = "";
+    document.getElementById("findings").innerHTML = "";
+    document.getElementById("risk").innerText = "Не проверено";
+    document.getElementById("action").innerHTML = '<span class="badge bg-secondary">Не проверено</span>';
+    document.getElementById("providerWarning").style.display = "none";
+    document.getElementById("totalMatches").innerText = "0";
+}
+
+</script>
+{% endblock %}

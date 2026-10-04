@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Сканирование папок — Промпт-Щит{% endblock %}
+{% block page_title %}Фоновое сканирование папок{% endblock %}
+
+{% block content %}
+
+<div class="ps-card mb-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <div style="color:var(--muted);font-size:13px;">Папка</div>
+      <div style="font-weight:600;">{{ cfg.scan.folder or 'не настроена' }}</div>
+    </div>
+    <div>
+      <div style="color:var(--muted);font-size:13px;">Статус</div>
+      <span class="badge {{ 'bg-success' if cfg.scan.enabled else 'bg-secondary' }}">
+        {{ 'включено' if cfg.scan.enabled else 'выключено' }}
+      </span>
+    </div>
+    <div>
+      <div style="color:var(--muted);font-size:13px;">Интервал</div>
+      <div>{{ cfg.scan.interval_minutes }} мин.</div>
+    </div>
+    <div>
+      <div style="color:var(--muted);font-size:13px;">Сейчас</div>
+      <div>{{ 'сканирование выполняется…' if status.live.running else 'ожидание' }}</div>
+    </div>
+    <form method="post" action="{{ url_for('routes.scan_run') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary btn-sm" {{ 'disabled' if not cfg.scan.folder }}>
+        <i class="bi bi-play-fill"></i> Запустить сейчас
+      </button>
+    </form>
+  </div>
+  <p class="mt-3 mb-0" style="color:var(--muted);font-size:13px;">
+    Настройка папки и интервала — в разделе <a href="{{ url_for('routes.settings_page') }}">Настройки</a>.
+    Уже проверенные (неизменившиеся) файлы повторно не анализируются между циклами.
+  </p>
+</div>
+
+<div class="ps-card">
+  <h5 class="mb-3">История запусков</h5>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Начало</th>
+          <th>Завершение</th>
+          <th>Папка</th>
+          <th>Файлов проверено</th>
+          <th>С совпадениями</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not status.runs %}
+        <tr><td colspan="6" style="color:var(--muted)">Сканирование ещё не запускалось</td></tr>
+        {% endif %}
+        {% for r in status.runs %}
+        <tr>
+          <td>{{ r.started_at }}</td>
+          <td>{{ r.finished_at or '—' }}</td>
+          <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.folder }}</td>
+          <td>{{ r.files_scanned }}</td>
+          <td>{{ r.files_flagged }}</td>
+          <td>
+            <span class="badge {{ 'bg-success' if r.status == 'completed' else ('bg-danger' if r.status == 'error' else 'bg-warning text-dark') }}">
+              {{ r.status }}
+            </span>
+            {% if r.error %}<div style="font-size:11px;color:var(--muted);">{{ r.error }}</div>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

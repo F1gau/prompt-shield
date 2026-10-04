@@ -1,0 +1,38 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# --- Сборка ---
+build/
+dist/
+*.spec.bak
+
+# --- Локальные данные и секреты (создаются при первом запуске) ---
+.env
+config.json
+config.json.tmp
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+*.log.*
+logs/incidents.json
+reports/*
+!reports/.gitkeep
+
+# --- Лицензии продавца ---
+scripts/issued_licenses.csv
+*.license
+license.key
+
+# --- Редакторы / ОС ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

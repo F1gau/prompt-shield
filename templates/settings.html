@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% block title %}Настройки — Промпт-Щит{% endblock %}
+{% block page_title %}Настройки{% endblock %}
+
+{% block content %}
+
+{% if message %}
+<div class="alert alert-success">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="row g-4">
+
+  <div class="col-lg-7">
+
+    {% if is_admin %}
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="policy">
+
+      <h5 class="mb-3">Политика анализа</h5>
+
+      <div class="mb-3">
+        <label class="form-label">Название организации (для отчётов)</label>
+        <input type="text" name="organization_name" class="form-control" value="{{ cfg.organization_name }}">
+      </div>
+
+      <label class="form-label">Категории детекторов</label>
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="det_personal" id="det_personal" {{ 'checked' if cfg.detectors.personal }}>
+        <label class="form-check-label" for="det_personal">Персональные данные (ФИО, email, телефон, паспорт, СНИЛС, ИНН)</label>
+      </div>
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="det_company" id="det_company" {{ 'checked' if cfg.detectors.company }}>
+        <label class="form-check-label" for="det_company">Реквизиты организаций (ИНН, КПП, ОГРН, корп. почта)</label>
+      </div>
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="det_bank" id="det_bank" {{ 'checked' if cfg.detectors.bank }}>
+        <label class="form-check-label" for="det_bank">Банковские реквизиты (БИК, расчётный/корр. счёт, номера карт)</label>
+      </div>
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="det_secrets" id="det_secrets" {{ 'checked' if cfg.detectors.secrets }}>
+        <label class="form-check-label" for="det_secrets">Секреты и токены доступа (API-ключи, пароли, JWT и т.д.)</label>
+      </div>
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" name="det_address" id="det_address" {{ 'checked' if cfg.detectors.address }}>
+        <label class="form-check-label" for="det_address">Адреса</label>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Минимальный порог уверенности: <span id="confVal">{{ cfg.min_confidence }}</span></label>
+        <input type="range" class="form-range" min="0" max="1" step="0.05" name="min_confidence"
+               value="{{ cfg.min_confidence }}" oninput="document.getElementById('confVal').innerText=this.value">
+        <div style="color:var(--muted);font-size:12px;">Совпадения с более низкой уверенностью будут скрыты (снижает количество ложных срабатываний).</div>
+      </div>
+
+      <button class="btn btn-primary">Сохранить политику</button>
+    </form>
+
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="whitelist">
+
+      <h5 class="mb-1">Список исключений</h5>
+      <p style="color:var(--muted);font-size:13px;">Значения и домены, которые организация не считает утечкой (например, собственный домен или тестовые данные). Каждое значение — с новой строки.</p>
+
+      <div class="mb-3">
+        <label class="form-label">Исключённые значения</label>
+        <textarea name="whitelist_values" class="form-control" style="min-height:90px;" placeholder="ivan@example.com&#10;7700000000">{{ cfg.whitelist_values | join('\n') }}</textarea>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Исключённые домены email (для EMAIL/CORPORATE_EMAIL)</label>
+        <textarea name="whitelist_domains" class="form-control" style="min-height:70px;" placeholder="company.ru">{{ cfg.whitelist_domains | join('\n') }}</textarea>
+      </div>
+
+      <button class="btn btn-primary">Сохранить исключения</button>
+    </form>
+
+    <div class="ps-card">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <h5 class="mb-0">Отметки «не утечка» от пользователей</h5>
+        <span class="badge bg-secondary">{{ feedback_entries | length }}</span>
+      </div>
+      <p style="color:var(--muted);font-size:13px;">
+        Значения, которые пользователи отметили прямо в результатах проверки как ложные
+        срабатывания — они больше не показываются автоматически. Здесь можно отменить отметку
+        (значение снова начнёт находиться) или перенести в постоянный список исключений выше.
+      </p>
+
+      {% if feedback_entries %}
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead><tr><th>Тип</th><th>Значение</th><th>Кто отметил</th><th>Когда</th><th></th></tr></thead>
+          <tbody>
+            {% for fb in feedback_entries %}
+            <tr>
+              <td><span class="badge bg-secondary">{{ fb.type }}</span></td>
+              <td style="font-size:13px;">{{ fb.value }}</td>
+              <td style="font-size:12px;color:var(--muted);">{{ fb.username or "—" }}</td>
+              <td style="font-size:12px;color:var(--muted);">{{ fb.timestamp }}</td>
+              <td class="d-flex gap-1">
+                <form method="post">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="form_type" value="feedback_action">
+                  <input type="hidden" name="fb_action" value="promote">
+                  <input type="hidden" name="feedback_id" value="{{ fb.id }}">
+                  <button class="btn btn-sm btn-outline-primary" title="Перенести в постоянный список исключений">В whitelist</button>
+                </form>
+                <form method="post">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="form_type" value="feedback_action">
+                  <input type="hidden" name="fb_action" value="remove">
+                  <input type="hidden" name="feedback_id" value="{{ fb.id }}">
+                  <button class="btn btn-sm btn-outline-danger" title="Отменить отметку">Отменить</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p style="color:var(--muted);font-size:13px;" class="mb-0">Пока нет отметок.</p>
+      {% endif %}
+    </div>
+
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="ldap">
+
+      <h5 class="mb-1">LDAP / Active Directory</h5>
+      <p style="color:var(--muted);font-size:13px;">
+        Вход сотрудников через корпоративный AD вместо локальных паролей.
+        {% if not ldap_available %}
+        <br><span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Пакет <code>ldap3</code> не установлен — выполните <code>pip install ldap3</code>, чтобы включить эту функцию.</span>
+        {% endif %}
+      </p>
+
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="ldap_enabled" id="ldap_enabled" {{ 'checked' if cfg.ldap.enabled }}>
+        <label class="form-check-label" for="ldap_enabled">Включить LDAP-аутентификацию</label>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label">Адрес сервера</label>
+        <input type="text" name="ldap_server" class="form-control" value="{{ cfg.ldap.server }}" placeholder="ldap://dc.company.local">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Шаблон DN пользователя</label>
+        <input type="text" name="ldap_user_dn_template" class="form-control" value="{{ cfg.ldap.user_dn_template }}" placeholder="{username}@company.local">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Base DN</label>
+        <input type="text" name="ldap_base_dn" class="form-control" value="{{ cfg.ldap.base_dn }}" placeholder="DC=company,DC=local">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">DN группы администраторов (опционально)</label>
+        <input type="text" name="ldap_admin_group_dn" class="form-control" value="{{ cfg.ldap.admin_group_dn }}" placeholder="CN=IT-Admins,OU=Groups,DC=company,DC=local">
+      </div>
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" name="ldap_use_ssl" id="ldap_use_ssl" {{ 'checked' if cfg.ldap.use_ssl }}>
+        <label class="form-check-label" for="ldap_use_ssl">Использовать SSL</label>
+      </div>
+
+      <button class="btn btn-primary">Сохранить настройки LDAP</button>
+    </form>
+
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="notifications">
+
+      <h5 class="mb-3">Уведомления о критичных инцидентах</h5>
+
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="email_enabled" id="email_enabled" {{ 'checked' if cfg.notifications.email_enabled }}>
+        <label class="form-check-label" for="email_enabled">Email-уведомления (SMTP)</label>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-8"><input type="text" name="smtp_host" class="form-control" placeholder="smtp.company.ru" value="{{ cfg.notifications.smtp_host }}"></div>
+        <div class="col-4"><input type="number" name="smtp_port" class="form-control" placeholder="587" value="{{ cfg.notifications.smtp_port }}"></div>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-6"><input type="text" name="smtp_user" class="form-control" placeholder="Логин SMTP" value="{{ cfg.notifications.smtp_user }}"></div>
+        <div class="col-6"><input type="password" name="smtp_password" class="form-control" placeholder="Пароль SMTP (оставьте пустым, если не меняется)"></div>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-6"><input type="text" name="email_from" class="form-control" placeholder="От кого" value="{{ cfg.notifications.email_from }}"></div>
+        <div class="col-6"><input type="text" name="email_to" class="form-control" placeholder="Кому (можно несколько через запятую)" value="{{ cfg.notifications.email_to }}"></div>
+      </div>
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" name="smtp_use_tls" id="smtp_use_tls" {{ 'checked' if cfg.notifications.smtp_use_tls }}>
+        <label class="form-check-label" for="smtp_use_tls">Использовать STARTTLS</label>
+      </div>
+
+      <hr style="border-color:var(--border)">
+
+      <div class="form-check form-switch mb-2 mt-3">
+        <input class="form-check-input" type="checkbox" name="webhook_enabled" id="webhook_enabled" {{ 'checked' if cfg.notifications.webhook_enabled }}>
+        <label class="form-check-label" for="webhook_enabled">Webhook / SIEM-интеграция</label>
+      </div>
+      <div class="mb-2">
+        <input type="text" name="webhook_url" class="form-control" placeholder="https://siem.company.ru/webhook" value="{{ cfg.notifications.webhook_url }}">
+      </div>
+      <div class="mb-3">
+        <select name="webhook_format" class="form-select">
+          <option value="json" {{ 'selected' if cfg.notifications.webhook_format == 'json' }}>JSON</option>
+          <option value="cef" {{ 'selected' if cfg.notifications.webhook_format == 'cef' }}>CEF (ArcSight/QRadar/Splunk)</option>
+        </select>
+      </div>
+
+      <hr style="border-color:var(--border)">
+
+      <div class="form-check form-switch mb-2 mt-3">
+        <input class="form-check-input" type="checkbox" name="syslog_enabled" id="syslog_enabled" {{ 'checked' if cfg.notifications.syslog_enabled }}>
+        <label class="form-check-label" for="syslog_enabled">Syslog (UDP, формат CEF)</label>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-8"><input type="text" name="syslog_host" class="form-control" placeholder="siem.company.ru" value="{{ cfg.notifications.syslog_host }}"></div>
+        <div class="col-4"><input type="number" name="syslog_port" class="form-control" placeholder="514" value="{{ cfg.notifications.syslog_port }}"></div>
+      </div>
+
+      <button class="btn btn-primary">Сохранить настройки уведомлений</button>
+    </form>
+
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="ai_providers">
+
+      <h5 class="mb-1">Политика AI-сервисов</h5>
+      <p style="color:var(--muted);font-size:13px;">
+        Сотрудник сам указывает на странице проверки, куда планирует отправить
+        текст. Здесь вы определяете, какие сервисы считаются разрешёнными —
+        это организационная политика, а не техническое ограничение доступа
+        (файл не перехватывает трафик к AI-сервисам).
+      </p>
+
+      {% for key, provider in cfg.ai_providers.items() %}
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="provider_{{ key }}" id="provider_{{ key }}" {{ 'checked' if provider.allowed }}>
+        <label class="form-check-label" for="provider_{{ key }}">{{ provider.label }}</label>
+      </div>
+      {% endfor %}
+
+      <button class="btn btn-primary mt-2">Сохранить политику AI-сервисов</button>
+    </form>
+
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="scan">
+
+      <h5 class="mb-1">Фоновое сканирование папок</h5>
+      <p style="color:var(--muted);font-size:13px;">Периодическая проверка сетевой папки/диска на чувствительные данные без ручной загрузки файлов.</p>
+
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="scan_enabled" id="scan_enabled" {{ 'checked' if cfg.scan.enabled }}>
+        <label class="form-check-label" for="scan_enabled">Включить фоновое сканирование</label>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label">Папка для сканирования</label>
+        <input type="text" name="scan_folder" class="form-control" placeholder="\\fileserver\shared или /mnt/shared" value="{{ cfg.scan.folder }}">
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label">Интервал (минут)</label>
+        <input type="number" name="scan_interval_minutes" class="form-control" min="5" value="{{ cfg.scan.interval_minutes }}">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Расширения файлов (через запятую)</label>
+        <input type="text" name="scan_extensions" class="form-control" value="{{ cfg.scan.extensions | join(', ') }}">
+      </div>
+
+      <button class="btn btn-primary">Сохранить настройки сканирования</button>
+    </form>
+    {% else %}
+    <div class="ps-card">
+      <p style="color:var(--muted)">Изменение политики анализа, LDAP, уведомлений и списка исключений доступно только администратору.</p>
+    </div>
+    {% endif %}
+
+    <form method="post" class="ps-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="my_password">
+      <h5 class="mb-3">Смена своего пароля</h5>
+      <input type="password" name="new_password" class="form-control mb-3" placeholder="Новый пароль" required minlength="8">
+      <button class="btn btn-primary">Изменить пароль</button>
+    </form>
+
+  </div>
+
+  <div class="col-lg-5">
+
+    {% if is_admin %}
+    <div class="ps-card">
+      <h5 class="mb-3">REST API для интеграции</h5>
+      <p style="color:var(--muted);font-size:13px;">
+        Используйте этот ключ в заголовке <code>X-API-Key</code> для интеграции «Промпт-Щита»
+        с внутренними системами (почтовые фильтры, чат-боты, DLP-шлюзы).
+      </p>
+      <div class="input-group mb-3">
+        <input type="text" class="form-control" value="{{ cfg.api_key }}" readonly id="apiKeyField">
+        <button class="btn btn-outline-secondary" type="button" onclick="copyKey()">Копировать</button>
+      </div>
+      <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="form_type" value="api_key">
+        <button class="btn btn-outline-danger btn-sm">Сгенерировать новый ключ</button>
+      </form>
+      <div class="mt-3" style="font-size:13px;color:var(--muted)">
+        Пример: <code>POST /api/analyze</code> с заголовком <code>X-API-Key: {{ cfg.api_key[:8] }}...</code>
+      </div>
+    </div>
+
+    <form method="post" class="ps-card" onsubmit="return confirm('Очистить весь журнал инцидентов?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="clear_logs">
+      <h5 class="mb-3">Журнал инцидентов</h5>
+      <button class="btn btn-outline-danger">Очистить журнал</button>
+    </form>
+
+    <div class="ps-card">
+      <h5 class="mb-2"><i class="bi bi-people"></i> Пользователи и роли</h5>
+      <p style="color:var(--muted);font-size:13px;">Управление учётными записями — в отдельном разделе.</p>
+      <a href="{{ url_for('routes.users_page') }}" class="btn btn-outline-primary btn-sm">Перейти к пользователям</a>
+    </div>
+
+    <div class="ps-card">
+      <h5 class="mb-2"><i class="bi bi-hdd-network"></i> Фоновое сканирование папок</h5>
+      <p style="color:var(--muted);font-size:13px;">Настройка периодической проверки сетевых папок — в отдельном разделе.</p>
+      <a href="{{ url_for('routes.scan_page') }}" class="btn btn-outline-primary btn-sm">Перейти к сканированию</a>
+    </div>
+    {% endif %}
+
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyKey(){
+    const field = document.getElementById("apiKeyField");
+    if(!field) return;
+    field.select();
+    document.execCommand("copy");
+}
+</script>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Резервное копирование — Промпт-Щит{% endblock %}
+{% block page_title %}Резервное копирование{% endblock %}
+
+{% block content %}
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="ps-card mb-4">
+  <h5 class="mb-2">Как это работает</h5>
+  <p style="color:var(--muted);font-size:13px;" class="mb-0">
+    Бэкап — это ZIP-файл с настройками (config.json) и журналом инцидентов (база данных).
+    Файл создаётся на этом же компьютере и скачивается через браузер — никуда по сети не
+    отправляется. Он содержит хэши паролей и API-ключ, поэтому храните файл бэкапа так же
+    аккуратно, как сами настройки приложения.
+  </p>
+</div>
+
+<div class="row g-4">
+
+  <div class="col-lg-6">
+    <div class="ps-card">
+      <h5 class="mb-3">Создать бэкап</h5>
+      <form method="post" action="{{ url_for('routes.backup_create') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-primary">
+          <i class="bi bi-download"></i> Скачать бэкап сейчас
+        </button>
+      </form>
+    </div>
+
+    <div class="ps-card mt-4">
+      <h6 class="mb-2">Ранее созданные бэкапы</h6>
+      <p style="color:var(--muted);font-size:12px;">Хранятся локально в папке reports/.</p>
+      <table class="table table-sm">
+        <thead><tr><th>Файл</th><th>Размер</th><th>Дата</th></tr></thead>
+        <tbody>
+          {% if not backups %}
+          <tr><td colspan="3" style="color:var(--muted)">Бэкапов ещё не создавалось</td></tr>
+          {% endif %}
+          {% for b in backups %}
+          <tr>
+            <td style="font-size:12px;">{{ b.name }}</td>
+            <td style="font-size:12px;">{{ b.size_kb }} КБ</td>
+            <td style="font-size:12px;">{{ b.modified }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <form method="post" action="{{ url_for('routes.backup_restore') }}" enctype="multipart/form-data"
+          class="ps-card" onsubmit="return confirm('Восстановление ЗАМЕНИТ текущие настройки и журнал инцидентов содержимым бэкапа. Продолжить?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h5 class="mb-3">Восстановить из бэкапа</h5>
+
+      <div class="alert alert-warning py-2" style="font-size:13px;">
+        <i class="bi bi-exclamation-triangle"></i> Восстановление заменит текущие настройки и
+        журнал инцидентов. Перед заменой автоматически создаётся предохранительная копия
+        текущего состояния. После восстановления потребуется войти заново, и рекомендуется
+        перезапустить приложение — часть внутренних параметров (например, ключ подписи сессии)
+        применяется только при старте.
+      </div>
+
+      <input type="file" name="backup_file" accept=".zip" class="form-control mb-3" required>
+      <button class="btn btn-outline-danger">
+        <i class="bi bi-upload"></i> Восстановить
+      </button>
+    </form>
+  </div>
+
+</div>
+
+{% endblock %}

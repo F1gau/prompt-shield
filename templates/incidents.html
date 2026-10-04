@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Журнал инцидентов — Промпт-Щит{% endblock %}
+{% block page_title %}Журнал инцидентов{% endblock %}
+
+{% block content %}
+
+<div class="ps-card">
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h5 class="mb-0">История проверок</h5>
+    <select id="riskFilter" class="form-select" style="max-width:220px;" onchange="applyFilter()">
+      <option value="">Все уровни риска</option>
+      <option value="Низкий">Низкий</option>
+      <option value="Средний">Средний</option>
+      <option value="Высокий">Высокий</option>
+      <option value="Критический">Критический</option>
+    </select>
+  </div>
+
+  <p style="color:var(--muted);font-size:13px;">
+    В журнале хранятся только метаданные (дата, уровень риска, типы данных). Сами найденные значения
+    (номера, токены и т.д.) не сохраняются — это соответствует принципам минимизации хранения данных.
+  </p>
+
+  <div class="table-responsive">
+    <table class="table" id="logsTable">
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Источник</th>
+          <th>Риск</th>
+          <th>Действие</th>
+          <th>AI-сервис</th>
+          <th>Совпадений</th>
+          <th>Типы данных</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not logs %}
+        <tr><td colspan="7" style="color:var(--muted)">Нет проверок</td></tr>
+        {% endif %}
+        {% for log in logs %}
+        <tr data-risk="{{ log.risk }}">
+          <td>{{ log.timestamp }}</td>
+          <td>
+            {% if log.source == "file" %}<i class="bi bi-file-earmark"></i> {{ log.filename or "файл" }}
+            {% elif log.source == "report" %}<i class="bi bi-file-earmark-pdf"></i> PDF-отчёт
+            {% elif log.source == "ai_response" %}<i class="bi bi-arrow-return-left"></i> Ответ ИИ
+            {% elif log.source == "scan" %}<i class="bi bi-hdd-network"></i> {{ log.filename or "скан. папка" }}
+            {% else %}<i class="bi bi-keyboard"></i> Текст{% endif %}
+          </td>
+          <td>
+            <span class="badge-risk {{ {'Низкий':'risk-low','Средний':'risk-medium','Высокий':'risk-high','Критический':'risk-critical'}[log.risk] }}">
+              {{ log.risk }}
+            </span>
+          </td>
+          <td>
+            {% if log.action == "ALLOW" %}<span class="badge" style="background:#22c55e;">ALLOW</span>
+            {% elif log.action == "MASK" %}<span class="badge" style="background:#eab308;color:#1f2937;">MASK</span>
+            {% elif log.action == "BLOCK" %}<span class="badge" style="background:#ef4444;">BLOCK</span>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:13px;color:var(--muted);">{{ log.destination or "—" }}</td>
+          <td>{{ log.findings_count }}</td>
+          <td>{{ log.types | join(", ") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function applyFilter(){
+    const value = document.getElementById("riskFilter").value;
+    document.querySelectorAll("#logsTable tbody tr[data-risk]").forEach(row => {
+        row.style.display = (!value || row.dataset.risk === value) ? "" : "none";
+    });
+}
+</script>
+{% endblock %}

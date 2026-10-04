@@ -1,0 +1,17 @@
+# Необязательные зависимости. Без них приложение работает, а
+# соответствующая функция просто отключена.
+#
+#   pip install -r requirements-optional.txt
+
+# OCR для сканов PDF и изображений (JPG/PNG/WEBP).
+# Дополнительно нужен системный Tesseract-OCR с языком rus
+# (Debian/Ubuntu: apt install tesseract-ocr tesseract-ocr-rus).
+pytesseract>=0.3.10
+Pillow>=10.0
+
+# Вход через корпоративный LDAP / Active Directory (Настройки → LDAP).
+ldap3>=2.9
+
+# NER-слой: дополнительное распознавание ФИО и организаций по контексту.
+# Тяжёлая зависимость (тянет модели и numpy).
+natasha>=1.6

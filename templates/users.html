@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Пользователи — Промпт-Щит{% endblock %}
+{% block page_title %}Пользователи{% endblock %}
+
+{% block content %}
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="ps-card mb-4">
+  <h5 class="mb-3">Создать пользователя</h5>
+  <form method="post" class="row g-2 align-items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="create">
+    <div class="col-md-3">
+      <label class="form-label">Имя пользователя</label>
+      <input type="text" name="username" class="form-control" required>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Пароль</label>
+      <input type="password" name="password" class="form-control" required minlength="8">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Роль</label>
+      <select name="role" class="form-select">
+        {% for r in roles %}
+        <option value="{{ r }}">{{ 'Администратор' if r == 'admin' else 'Аналитик' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <button class="btn btn-primary w-100">Создать</button>
+    </div>
+  </form>
+</div>
+
+<div class="ps-card">
+  <h5 class="mb-3">Список пользователей</h5>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Имя</th>
+          <th>Роль</th>
+          <th>Источник</th>
+          <th>Активен</th>
+          <th>Последний вход</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>
+            <form method="post" class="d-flex gap-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="set_role">
+              <input type="hidden" name="username" value="{{ u.username }}">
+              <select name="role" class="form-select form-select-sm" onchange="this.form.submit()" style="width:auto;">
+                <option value="analyst" {{ 'selected' if u.role == 'analyst' }}>Аналитик</option>
+                <option value="admin" {{ 'selected' if u.role == 'admin' }}>Администратор</option>
+              </select>
+            </form>
+          </td>
+          <td><span class="badge bg-secondary">{{ u.auth_source }}</span></td>
+          <td>
+            <form method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="set_active">
+              <input type="hidden" name="username" value="{{ u.username }}">
+              <input type="hidden" name="active" value="{{ '0' if u.active else '1' }}">
+              <button class="btn btn-sm {{ 'btn-outline-success' if u.active else 'btn-outline-secondary' }}">
+                {{ 'Активен' if u.active else 'Отключён' }}
+              </button>
+            </form>
+          </td>
+          <td style="color:var(--muted);font-size:13px;">{{ u.last_login or '—' }}</td>
+          <td>
+            <div class="d-flex gap-2">
+              <form method="post" class="d-flex gap-1" onsubmit="return promptPassword(this);">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="reset_password">
+                <input type="hidden" name="username" value="{{ u.username }}">
+                <input type="hidden" name="password" class="pw-field">
+                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Сбросить пароль">
+                  <i class="bi bi-key"></i>
+                </button>
+              </form>
+              <form method="post" onsubmit="return confirm('Удалить пользователя {{ u.username }}?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="username" value="{{ u.username }}">
+                <button class="btn btn-sm btn-outline-danger" title="Удалить">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function promptPassword(form){
+    const pwd = prompt("Новый пароль для пользователя (минимум 8 символов):");
+    if(!pwd || pwd.length < 4){
+        if(pwd !== null) alert("Пароль слишком короткий");
+        return false;
+    }
+    form.querySelector(".pw-field").value = pwd;
+    return true;
+}
+</script>
+{% endblock %}
